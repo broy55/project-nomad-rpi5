@@ -6,7 +6,6 @@ import { createHash } from 'crypto'
 import { DockerService } from '#services/docker_service'
 import { ZimService } from '#services/zim_service'
 import { MapService } from '#services/map_service'
-import { EmbedFileJob } from './embed_file_job.js'
 import { dirname, join } from 'path'
 import axios from 'axios'
 
@@ -72,14 +71,11 @@ export class RunDownloadJob {
         if (filetype === 'zim') {
           await zimService.downloadRemoteSuccessCallback([completedUrl], true)
 
-          try {
-            await EmbedFileJob.dispatch({
-              fileName: completedUrl.split('/').pop() || '',
-              filePath: completedFilePath,
-            })
-          } catch (error) {
-            console.error(`[RunDownloadJob] Error dispatching EmbedFileJob for URL ${completedUrl}:`, error)
-          }
+          // Raspberry Pi optimization:
+          // Kiwix ZIM archives are already searchable through Kiwix.
+          // Do not automatically vector-embed large ZIM archives into Qdrant.
+          // Normal Knowledge Base/document embedding remains enabled.
+          console.log(`[RunDownloadJob] Skipping automatic RAG embedding for ZIM: ${completedFilePath}`)
         } else if (filetype === 'map') {
           const mapsService = new MapService()
           await mapsService.downloadRemoteSuccessCallback([completedUrl], false)

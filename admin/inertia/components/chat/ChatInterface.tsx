@@ -1,4 +1,4 @@
-import { IconSend, IconWand } from '@tabler/icons-react'
+import { IconSend, IconWand, IconPlayerStopFilled } from '@tabler/icons-react'
 import { useState, useRef, useEffect } from 'react'
 import classNames from '~/lib/classNames'
 import { ChatMessage } from '../../../types/chat'
@@ -13,6 +13,8 @@ import { usePage } from '@inertiajs/react'
 interface ChatInterfaceProps {
   messages: ChatMessage[]
   onSendMessage: (message: string) => void
+  onStopGeneration?: () => void
+  isGenerating?: boolean
   isLoading?: boolean
   chatSuggestions?: string[]
   chatSuggestionsEnabled?: boolean
@@ -24,6 +26,8 @@ interface ChatInterfaceProps {
 export default function ChatInterface({
   messages,
   onSendMessage,
+  onStopGeneration,
+  isGenerating = false,
   isLoading = false,
   chatSuggestions = [],
   chatSuggestionsEnabled = false,
@@ -157,6 +161,20 @@ export default function ChatInterface({
       </div>
       <div className="border-t border-gray-200 bg-white px-6 py-4 flex-shrink-0 min-h-[90px]">
         <form onSubmit={handleSubmit} className="flex gap-3 items-end">
+          <button
+            type="button"
+            onClick={onStopGeneration}
+            disabled={!isGenerating}
+            title={isGenerating ? 'Stop generating' : 'Nothing is currently generating'}
+            className={classNames(
+              'p-3 rounded-lg transition-all duration-200 flex-shrink-0 mb-2',
+              isGenerating
+                ? 'bg-red-600 text-white hover:bg-red-700 hover:scale-105'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            )}
+          >
+            <IconPlayerStopFilled className="h-6 w-6" />
+          </button>
           <div className="flex-1 relative">
             <textarea
               ref={textareaRef}

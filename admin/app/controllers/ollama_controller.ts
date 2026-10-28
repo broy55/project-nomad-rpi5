@@ -8,7 +8,6 @@ import { inject } from '@adonisjs/core'
 import type { HttpContext } from '@adonisjs/core/http'
 import { RAG_CONTEXT_LIMITS, SYSTEM_PROMPTS } from '../../constants/ollama.js'
 import logger from '@adonisjs/core/services/logger'
-import type { Message } from 'ollama'
 
 @inject()
 export default class OllamaController {
@@ -56,7 +55,7 @@ export default class OllamaController {
 
       // Query rewriting for better RAG retrieval with manageable context
       // Will return user's latest message if no rewriting is needed
-      const rewrittenQuery = await this.rewriteQueryWithContext(reqData.messages)
+      const rewrittenQuery = null // RAG disabled for Raspberry Pi
 
       logger.debug(`[OllamaController] Rewritten query for RAG: "${rewrittenQuery}"`)
       if (rewrittenQuery) {
@@ -223,65 +222,5 @@ export default class OllamaController {
     return { maxResults: 5, maxTokens: 0 }
   }
 
-  private async rewriteQueryWithContext(
-    messages: Message[]
-  ): Promise<string | null> {
-    try {
-      // Get recent conversation history (last 6 messages for 3 turns)
-      const recentMessages = messages.slice(-6)
 
-      // Skip rewriting for short conversations. Rewriting adds latency with
-      // little RAG benefit until there is enough context to matter.
-      const userMessages = recentMessages.filter(msg => msg.role === 'user')
-      if (userMessages.length <= 2) {
-        return userMessages[userMessages.length - 1]?.content || null
-      }
-
-      const conversationContext = recentMessages
-        .map(msg => {
-          const role = msg.role === 'user' ? 'User' : 'Assistant'
-          // Truncate assistant messages to first 200 chars to keep context manageable
-          const content = msg.role === 'assistant'
-            ? msg.content.slice(0, 200) + (msg.content.length > 200 ? '...' : '')
-            : msg.content
-          return `${role}: "${content}"`
-        })
-        .join('\n')
-
-      const helperTextModel = await this.ollamaService.getConfiguredHelperTextModel()
-      const installedModels = await this.ollamaService.getModels(true)
-      const rewriteModelAvailable = installedModels?.some(model => model.name === helperTextModel)
-      if (!rewriteModelAvailable) {
-        logger.warn(`[RAG] Query rewrite model "${helperTextModel}" not available. Skipping query rewriting.`)
-        const lastUserMessage = [...messages].reverse().find(msg => msg.role === 'user')
-        return lastUserMessage?.content || null
-      }
-
-      // FUTURE ENHANCEMENT: allow the user to specify which model to use for rewriting
-      const response = await this.ollamaService.chat({
-        model: helperTextModel,
-        messages: [
-          {
-            role: 'system',
-            content: SYSTEM_PROMPTS.query_rewrite,
-          },
-          {
-            role: 'user',
-            content: `Conversation:\n${conversationContext}\n\nRewritten Query:`,
-          },
-        ],
-      })
-
-      const rewrittenQuery = response.message.content.trim()
-      logger.info(`[RAG] Query rewritten: "${rewrittenQuery}"`)
-      return rewrittenQuery
-    } catch (error) {
-      logger.error(
-        `[RAG] Query rewriting failed: ${error instanceof Error ? error.message : error}`
-      )
-      // Fallback to last user message if rewriting fails
-      const lastUserMessage = [...messages].reverse().find(msg => msg.role === 'user')
-      return lastUserMessage?.content || null
-    }
-  }
 }

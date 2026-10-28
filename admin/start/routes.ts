@@ -105,6 +105,8 @@ router
     router.post('/models', [OllamaController, 'dispatchModelDownload'])
     router.delete('/models', [OllamaController, 'deleteModel'])
     router.get('/installed-models', [OllamaController, 'installedModels'])
+    router.get('/runtime-status', [OllamaController, 'runtimeStatus'])
+    router.post('/load-model', [OllamaController, 'loadModel'])
   })
   .prefix('/api/ollama')
 
@@ -136,6 +138,16 @@ router
 router
   .group(() => {
     router.get('/info', [SystemController, 'getSystemInfo'])
+    router.get('/activity', [SystemController, 'getActivity'])
+    router.get('/diagnostics', [SystemController, 'getDiagnostics'])
+    router.get('/recovery', [SystemController, 'getRecovery'])
+    router.post('/recovery/import', [SystemController, 'importRecovery'])
+    router.post('/reconcile', [SystemController, 'reconcile'])
+    router.post('/resume-installed-services', [SystemController, 'resumeInstalledServices'])
+    router.post('/retry-failed-embedding-jobs', [SystemController, 'retryFailedEmbeddingJobs'])
+    router.post('/retry-failed-download-jobs', [SystemController, 'retryFailedDownloadJobs'])
+    router.post('/clear-failed-jobs', [SystemController, 'clearFailedJobs'])
+    router.post('/services/repair', [SystemController, 'repairService'])
     router.get('/internet-status', [SystemController, 'getInternetStatus'])
     router.get('/services', [SystemController, 'getServices'])
     router.post('/services/affect', [SystemController, 'affectService'])

@@ -87,6 +87,8 @@ services:
       timeout: 10s
       retries: 3
   updater:
+    profiles:
+      - maintenance
     build:
       context: ./sidecar-updater
       dockerfile: Dockerfile

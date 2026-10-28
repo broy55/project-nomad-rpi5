@@ -41,3 +41,6 @@ admin/public/assets
 
 # Admin specific development files
 admin/storage
+
+# Generated hotspot configuration (may contain credentials)
+/install/hotspot-preview/

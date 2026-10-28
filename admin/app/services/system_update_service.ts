@@ -21,37 +21,10 @@ export class SystemUpdateService {
    * Requests a system update by creating a request file that the sidecar will detect
    */
   async requestUpdate(): Promise<{ success: boolean; message: string }> {
-    try {
-      const currentStatus = this.getUpdateStatus()
-      if (currentStatus && !['idle', 'complete', 'error'].includes(currentStatus.stage)) {
-        return {
-          success: false,
-          message: `Update already in progress (stage: ${currentStatus.stage})`,
-        }
-      }
-
-      // Determine the Docker image tag to install.
-      const latestVersion = await KVStore.getValue('system.latestVersion')
-
-      const requestData = {
-        requested_at: new Date().toISOString(),
-        requester: 'admin-api',
-        target_tag: latestVersion ? `v${latestVersion}` : 'latest',
-      }
-
-      await writeFile(SystemUpdateService.REQUEST_FILE, JSON.stringify(requestData, null, 2))
-      logger.info(`[SystemUpdateService]: System update requested (target tag: ${requestData.target_tag}) - sidecar will process shortly`)
-
-      return {
-        success: true,
-        message: 'System update initiated. The admin container will restart during the process.',
-      }
-    } catch (error) {
-      logger.error('[SystemUpdateService]: Failed to request system update:', error)
-      return {
-        success: false,
-        message: `Failed to request update: ${error.message}`,
-      }
+    // Updates are disabled until a safe upgrade procedure is available.
+    return {
+      success: false,
+      message: 'In-app updates are disabled in the Raspberry Pi 5 edition. Your installation has not been changed.',
     }
   }
 

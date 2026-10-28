@@ -1,5 +1,21 @@
 #!/bin/bash
 
+# Project NOMAD Raspberry Pi 5 Edition
+# Manual application updates are disabled until a safe
+# backup, upgrade, and rollback procedure is implemented.
+
+echo
+echo "Project NOMAD Raspberry Pi 5 Edition"
+echo "===================================="
+echo
+echo "Automatic application upgrades are not supported in this release."
+echo "This safeguard protects customized source files and containers."
+echo
+echo "No changes have been made to your installation."
+echo
+exit 1
+
+
 # Project N.O.M.A.D. Update Script
 
 ###################################################################################################################################################################################################

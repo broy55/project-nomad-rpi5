@@ -34,8 +34,8 @@ WHIPTAIL_TITLE="Project N.O.M.A.D Installation"
 NOMAD_DIR="/opt/project-nomad"
 NOMAD_EXTERNAL_MOUNT_DEFAULT="/mnt/nomad-data"
 NOMAD_EXTERNAL_LABEL_DEFAULT="nomad-data"
-GITHUB_REPO_OWNER="${GITHUB_REPO_OWNER:-eglische}"
-GITHUB_REPO_NAME="${GITHUB_REPO_NAME:-project-nomad-rpi}"
+GITHUB_REPO_OWNER="${GITHUB_REPO_OWNER:-broy55}"
+GITHUB_REPO_NAME="${GITHUB_REPO_NAME:-project-nomad-rpi5}"
 GITHUB_REPO_BRANCH="${GITHUB_REPO_BRANCH:-main}"
 GITHUB_RAW_BASE_URL="https://raw.githubusercontent.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/refs/heads/${GITHUB_REPO_BRANCH}"
 GITHUB_ARCHIVE_URL="https://codeload.github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/tar.gz/refs/heads/${GITHUB_REPO_BRANCH}"
@@ -731,6 +731,18 @@ ensure_raspberry_pi_nvidia_prerequisites() {
 
   prompt_ai_runtime_selection
 
+  # Never modify the Pi kernel or install NVIDIA drivers
+  # when no NVIDIA PCI device is present.
+  if ! has_nvidia_pci_device; then
+    if [[ "${enable_ai_runtime}" == 'true' ]]; then
+      echo -e "${YELLOW}#${RESET} No NVIDIA GPU detected."
+      echo -e "${YELLOW}#${RESET} Using CPU-only AI mode."
+    fi
+
+    enable_ai_runtime='false'
+    return 0
+  fi
+
   if [[ "${enable_ai_runtime}" == 'false' ]]; then
     echo -e "${YELLOW}#${RESET} Skipping optional NVIDIA/CUDA runtime setup for this install.\\n"
     return 0
@@ -823,13 +835,26 @@ ensure_docker_installed() {
     sudo apt-get install -y ca-certificates curl gnupg
 
     sudo install -m 0755 -d /etc/apt/keyrings
-    sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+
+    local docker_os=''
+    local docker_codename=''
+
+    docker_os="$(. /etc/os-release && echo "${ID}")"
+    docker_codename="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
+
+    if [[ "$docker_os" != "ubuntu" && "$docker_os" != "debian" ]]; then
+      echo "Unsupported Docker repository distribution: $docker_os"
+      exit 1
+    fi
+
+    sudo curl -fsSL \
+      "https://download.docker.com/linux/${docker_os}/gpg" \
+      -o /etc/apt/keyrings/docker.asc
+
     sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-    local docker_codename=''
-    docker_codename="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
     echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian ${docker_codename} stable" | \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/${docker_os} ${docker_codename} stable" | \
       sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
     sudo apt-get update
@@ -2623,6 +2648,20 @@ parse_script_args() {
 ###################################################################################################################################################################################################
 
 parse_script_args "$@"
+
+# Protect existing Project NOMAD installations.
+# This installer is intended for fresh installations only.
+if [[ -f "${NOMAD_DIR}/compose.yml" ]]; then
+  echo
+  echo "ERROR: An existing Project NOMAD installation was detected."
+  echo "Location: ${NOMAD_DIR}"
+  echo
+  echo "This installer will not overwrite an existing installation."
+  echo "Use a documented upgrade procedure instead."
+  echo
+  exit 1
+fi
+
 setup_logging
 trap 'exit_code=$?; log_error_context "$exit_code" ${LINENO} "${BASH_COMMAND}"; exit "$exit_code"' ERR
 print_log_location

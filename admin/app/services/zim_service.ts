@@ -180,6 +180,12 @@ export class ZimService {
         lang: 'eng',
         ...(query ? { q: query } : {}),
       },
+      // Kiwix browse requires an access-confirmation cookie.
+      // Without it, the catalog endpoint returns an HTML confirmation
+      // page instead of the expected OPDS/Atom XML response.
+      headers: {
+        Cookie: 'confirmed=yes',
+      },
       responseType: 'text',
     })
 

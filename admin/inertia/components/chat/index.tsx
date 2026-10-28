@@ -44,6 +44,7 @@ export default function Chat({
   const [loadBaselineGpuBytes, setLoadBaselineGpuBytes] = useState<number | null>(null)
   const [loadMinObservedGpuBytes, setLoadMinObservedGpuBytes] = useState<number | null>(null)
   const [isStreamingResponse, setIsStreamingResponse] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
   const streamAbortRef = useRef<AbortController | null>(null)
 
   // Fetch all sessions
@@ -427,6 +428,10 @@ export default function Chat({
     }
   }, [activeLoadedChatModel, installedModels, lastModelSetting, selectedModel])
 
+  const handleStopGeneration = useCallback(() => {
+    streamAbortRef.current?.abort()
+  }, [])
+
   const handleNewChat = useCallback(() => {
     // Just clear the active session and messages - don't create a session yet
     setActiveSessionId(null)
@@ -652,6 +657,7 @@ export default function Chat({
         streamAbortRef.current = abortController
 
         setIsStreamingResponse(true)
+        setIsGenerating(true)
 
         const assistantMsgId = `msg-${Date.now()}-assistant`
         let isFirstChunk = true
@@ -733,6 +739,7 @@ export default function Chat({
           }
         } finally {
           setIsStreamingResponse(false)
+          setIsGenerating(false)
           streamAbortRef.current = null
         }
 
@@ -889,7 +896,9 @@ export default function Chat({
         <ChatInterface
           messages={messages}
           onSendMessage={handleSendMessage}
-          isLoading={isStreamingResponse || chatMutation.isPending}
+          onStopGeneration={handleStopGeneration}
+          isGenerating={isGenerating}
+          isLoading={isGenerating || chatMutation.isPending}
           chatSuggestions={chatSuggestions}
           chatSuggestionsEnabled={suggestionsEnabled}
           chatSuggestionsLoading={chatSuggestionsLoading}

@@ -260,45 +260,18 @@ export class ChatService {
     }
   }
 
-  async generateTitle(sessionId: number, userMessage: string, assistantMessage: string) {
+  async generateTitle(sessionId: number, userMessage: string, _assistantMessage: string) {
     try {
-      const models = await this.ollamaService.getModels()
-      const helperTextModel = await this.ollamaService.getConfiguredHelperTextModel()
-      const titleModelAvailable = models?.some((m) => m.name === helperTextModel)
-
-      let title: string
-
-      if (!titleModelAvailable) {
-        title = userMessage.slice(0, 57) + (userMessage.length > 57 ? '...' : '')
-      } else {
-        const response = await this.ollamaService.chat({
-          model: helperTextModel,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPTS.title_generation },
-            { role: 'user', content: userMessage },
-            { role: 'assistant', content: assistantMessage },
-          ],
-        })
-
-        title = response?.message?.content?.trim()
-        if (!title) {
-          title = userMessage.slice(0, 57) + (userMessage.length > 57 ? '...' : '')
-        }
-      }
+      // Raspberry Pi optimization:
+      // Avoid loading the helper text model solely to generate a chat title.
+      const title = userMessage.slice(0, 57) + (userMessage.length > 57 ? '...' : '')
 
       await this.updateSession(sessionId, { title })
-      logger.info(`[ChatService] Generated title for session ${sessionId}: "${title}"`)
+      logger.info(`[ChatService] Generated lightweight title for session ${sessionId}: "${title}"`)
     } catch (error) {
       logger.error(
         `[ChatService] Failed to generate title for session ${sessionId}: ${error instanceof Error ? error.message : error}`
       )
-      // Fall back to truncated user message
-      try {
-        const fallbackTitle = userMessage.slice(0, 57) + (userMessage.length > 57 ? '...' : '')
-        await this.updateSession(sessionId, { title: fallbackTitle })
-      } catch {
-        // Silently fail - session keeps "New Chat" title
-      }
     }
   }
 
