@@ -93,17 +93,68 @@ recommended one-command production installation procedure.
 ---
 
 ## Installation & Quickstart
-Project N.O.M.A.D. can be installed on any Debian-based operating system (we recommend Ubuntu). Installation is completely terminal-based, and all tools and resources are designed to be accessed through the browser, so there's no need for a desktop environment if you'd rather setup N.O.M.A.D. as a "server" and access it through other clients.
 
-*Note: sudo/root privileges are required to run the install script*
+### Raspberry Pi 5 — Experimental Installer
 
-#### Quick Install
+This fork targets Raspberry Pi 5 systems running Ubuntu Server ARM64.
+
+**Development configuration:**
+- Raspberry Pi 5 with 16 GB RAM
+- 1 TB NVMe SSD
+- Ubuntu Server 26.04 ARM64
+- Internet access during initial installation
+
+Other configurations may work but have not been independently validated.
+
+> **Development release:** The modified installer has not yet completed
+> an independent fresh-install test. Use a fresh, disposable test system,
+> not an existing working NOMAD server.
+
+### Download and Install
+
+On a fresh Raspberry Pi 5 running Ubuntu Server ARM64:
+
 ```bash
-# Development release: automated installation is not yet validated.
-# Review install/install_nomad.sh before running it on a test device.
+sudo apt update
+sudo apt install -y curl
+
+curl -fL https://raw.githubusercontent.com/broy55/project-nomad-rpi5/main/install/install_nomad.sh -o install_nomad.sh
+
+# Review the installer
+less install_nomad.sh
+
+# Experimental installation — test systems only
+sudo bash install_nomad.sh
 ```
 
-After completing a validated installation, open a browser and navigate to `http://localhost:8080` (or `http://DEVICE_IP:8080`) to start exploring!
+### Access Project NOMAD
+
+After installation, open a browser and visit:
+
+- Raspberry Pi: `http://localhost:8080`
+- Another computer: `http://DEVICE_IP:8080`
+
+Replace `DEVICE_IP` with the Raspberry Pi's IP address.
+
+### Wi-Fi Hotspot Status
+
+Offline hotspot configuration and firewall scripts are included for
+development testing.
+
+Firewall isolation has passed simulated tests, but persistent ownership
+tracking, interruption recovery, and independent real-network validation
+remain outstanding.
+
+**Do not execute the experimental firewall scripts on an existing
+working NOMAD installation.**
+
+### Source Code
+
+- [Raspberry Pi 5 Installer](install/install_nomad.sh)
+- [GitHub Repository](https://github.com/broy55/project-nomad-rpi5)
+- [Development Releases](https://github.com/broy55/project-nomad-rpi5/releases)
+
+---
 
 ## How It Works
 N.O.M.A.D. is a management UI ("Command Center") and API that orchestrates a collection of containerized tools and resources via [Docker](https://www.docker.com/). It handles installation, configuration, and updates for everything — so you don't have to.
