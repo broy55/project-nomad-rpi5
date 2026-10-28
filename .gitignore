@@ -44,3 +44,7 @@ admin/storage
 
 # Generated hotspot configuration (may contain credentials)
 /install/hotspot-preview/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
