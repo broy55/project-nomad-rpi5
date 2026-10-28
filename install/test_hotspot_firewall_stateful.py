@@ -48,6 +48,15 @@ if fail_match and fail_match in " ".join(args):
 if operation == "-L":
     finish(0 if chain in chains else 1)
 
+if operation == "-S":
+    if chain not in chains:
+        finish(1)
+
+    print("-N " + chain)
+    for rule in chains[chain]:
+        print("-A " + chain + " " + " ".join(rule))
+    finish(0)
+
 if operation == "-N":
     if chain in chains:
         finish(1)
@@ -105,7 +114,7 @@ def contains_rule(rules, *tokens):
     return any(all(token in rule for token in tokens) for rule in rules)
 
 def run_script(path, env):
-    subprocess.run(["bash", str(path)], env=env, check=True)
+    subprocess.run(["bash", str(path)], env=env, check=True, timeout=15)
 
 def main():
     for path in (FIREWALL, REMOVAL):
@@ -254,16 +263,16 @@ def main():
         partial = load()
 
         require(
-            partial != original,
-            "Partial installation leaves simulated rules behind",
+            partial == original,
+            "Automatic rollback restores original firewall state",
         )
 
-        # Recovery is explicitly invoked; it is not yet automatic.
+        # Cleanup should remain harmless after automatic recovery.
         run_script(REMOVAL, env)
 
         require(
             load() == original,
-            "Manual cleanup recovers from partial installation",
+            "Cleanup after automatic recovery preserves existing rules",
         )
 
         print("\n===== PRE-EXISTING CHAIN PROTECTION =====")
@@ -332,6 +341,31 @@ def main():
             print("KNOWN FAILURE: Cleanup modified a foreign chain.")
             print("Production cleanup requires ownership verification.")
 
+        print("\n===== ARBITRARY FOREIGN RULE PROTECTION =====")
+
+        arbitrary_foreign = json.loads(json.dumps(original))
+        arbitrary_foreign["iptables"]["NOMAD-WIFI-INPUT"] = [
+            ["-p", "tcp", "--dport", "45678", "-j", "DROP"]
+        ]
+
+        state_path.write_text(json.dumps(arbitrary_foreign))
+
+        arbitrary_cleanup = subprocess.run(
+            ["bash", str(REMOVAL)],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+
+        arbitrary_preserved = load() == arbitrary_foreign
+
+        if arbitrary_preserved:
+            print("PASS: Arbitrary foreign rule preserved.")
+        else:
+            print("SECURITY FAILURE: Arbitrary foreign rule was modified.")
+
         print("\n===== AUTOMATIC FAILURE RECOVERY =====")
 
         state_path.write_text(json.dumps(original))
@@ -353,7 +387,22 @@ def main():
             print("PASS: Failed installation automatically recovered.")
         else:
             print("KNOWN FAILURE: Partial rules remain after failure.")
-            print("Automatic recovery has not been implemented.")
+            print("Failure exit code:", failed_install.returncode)
+            print("Failure stderr:")
+            print(failed_install.stderr.strip() or "(empty)")
+
+            current = load()
+            for family in ("iptables", "ip6tables"):
+                expected_chains = original[family]
+                actual_chains = current[family]
+
+                for chain in sorted(set(expected_chains) | set(actual_chains)):
+                    before = expected_chains.get(chain)
+                    after = actual_chains.get(chain)
+                    if before != after:
+                        print(f"REMAINING DIFFERENCE: {family} {chain}")
+                        print("  Expected:", before)
+                        print("  Actual:  ", after)
 
         print("\n===== SECURITY RELEASE GATE =====")
 
@@ -363,7 +412,7 @@ def main():
             and load() == original
         )
 
-        if not cleanup_safe or not recovery_safe:
+        if not cleanup_safe or not recovery_safe or not arbitrary_preserved:
             print("BLOCKED: Firewall security requirements not met.")
             print("Foreign-chain cleanup protection:", cleanup_safe)
             print("Automatic failure recovery:", recovery_safe)

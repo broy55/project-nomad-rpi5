@@ -131,9 +131,49 @@ done
 # Docker must already be running.
 iptables -L DOCKER-USER -n >/dev/null
 
+declare -a CREATED_CHAINS=()
+declare -a CREATED_HOOKS=()
+
+rollback_on_error() {
+    local status=$?
+    local entry firewall parent interface chain
+    local i
+    local cleanup_failed=0
+
+    trap - ERR
+    set +e
+
+    echo "ERROR: Firewall setup failed; attempting recovery." >&2
+
+    for ((i=${#CREATED_HOOKS[@]}-1; i>=0; i--)); do
+        entry="${CREATED_HOOKS[$i]}"
+        IFS='|' read -r firewall parent interface chain <<< "$entry"
+
+        "$firewall" -D "$parent" -i "$interface" -j "$chain" ||
+            cleanup_failed=1
+    done
+
+    for ((i=${#CREATED_CHAINS[@]}-1; i>=0; i--)); do
+        entry="${CREATED_CHAINS[$i]}"
+        IFS='|' read -r firewall chain <<< "$entry"
+
+        "$firewall" -F "$chain" &&
+            "$firewall" -X "$chain" ||
+            cleanup_failed=1
+    done
+
+    if (( cleanup_failed )); then
+        echo "WARNING: Firewall recovery was incomplete." >&2
+    fi
+
+    exit "$status"
+}
+
+trap rollback_on_error ERR
+
 # IPv4 host INPUT protection.
-iptables -N "$INPUT_CHAIN" 2>/dev/null || true
-iptables -F "$INPUT_CHAIN"
+iptables -N "$INPUT_CHAIN"
+CREATED_CHAINS+=("iptables|$INPUT_CHAIN")
 
 iptables -A "$INPUT_CHAIN" \
     -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
@@ -152,14 +192,16 @@ iptables -A "$INPUT_CHAIN" \
 
 iptables -A "$INPUT_CHAIN" -j DROP
 
-iptables -C INPUT -i "$WIFI_INTERFACE" \
-    -j "$INPUT_CHAIN" 2>/dev/null ||
+if ! iptables -C INPUT -i "$WIFI_INTERFACE" \
+    -j "$INPUT_CHAIN" 2>/dev/null; then
     iptables -I INPUT 1 -i "$WIFI_INTERFACE" \
         -j "$INPUT_CHAIN"
+    CREATED_HOOKS+=("iptables|INPUT|$WIFI_INTERFACE|$INPUT_CHAIN")
+fi
 
 # IPv4 Docker forwarding protection.
-iptables -N "$FORWARD_CHAIN" 2>/dev/null || true
-iptables -F "$FORWARD_CHAIN"
+iptables -N "$FORWARD_CHAIN"
+CREATED_CHAINS+=("iptables|$FORWARD_CHAIN")
 
 for port in "${ALLOWED_PORTS[@]}"; do
     for bridge in docker0 br+; do
@@ -175,30 +217,39 @@ done
 
 iptables -A "$FORWARD_CHAIN" -j DROP
 
-iptables -C DOCKER-USER -i "$WIFI_INTERFACE" \
-    -j "$FORWARD_CHAIN" 2>/dev/null ||
+if ! iptables -C DOCKER-USER -i "$WIFI_INTERFACE" \
+    -j "$FORWARD_CHAIN" 2>/dev/null; then
     iptables -I DOCKER-USER 1 -i "$WIFI_INTERFACE" \
         -j "$FORWARD_CHAIN"
+    CREATED_HOOKS+=("iptables|DOCKER-USER|$WIFI_INTERFACE|$FORWARD_CHAIN")
+fi
 
 # IPv6: block traffic arriving through the hotspot.
 # This preview intentionally provides no IPv6 service access.
-ip6tables -N "$INPUT_CHAIN" 2>/dev/null || true
-ip6tables -F "$INPUT_CHAIN"
+ip6tables -N "$INPUT_CHAIN"
+CREATED_CHAINS+=("ip6tables|$INPUT_CHAIN")
 ip6tables -A "$INPUT_CHAIN" -j DROP
 
-ip6tables -C INPUT -i "$WIFI_INTERFACE" \
-    -j "$INPUT_CHAIN" 2>/dev/null ||
+if ! ip6tables -C INPUT -i "$WIFI_INTERFACE" \
+    -j "$INPUT_CHAIN" 2>/dev/null; then
     ip6tables -I INPUT 1 -i "$WIFI_INTERFACE" \
         -j "$INPUT_CHAIN"
+    CREATED_HOOKS+=("ip6tables|INPUT|$WIFI_INTERFACE|$INPUT_CHAIN")
+fi
 
-ip6tables -N "$FORWARD_CHAIN" 2>/dev/null || true
-ip6tables -F "$FORWARD_CHAIN"
+ip6tables -N "$FORWARD_CHAIN"
+CREATED_CHAINS+=("ip6tables|$FORWARD_CHAIN")
 ip6tables -A "$FORWARD_CHAIN" -j DROP
 
-ip6tables -C FORWARD -i "$WIFI_INTERFACE" \
-    -j "$FORWARD_CHAIN" 2>/dev/null ||
+if ! ip6tables -C FORWARD -i "$WIFI_INTERFACE" \
+    -j "$FORWARD_CHAIN" 2>/dev/null; then
     ip6tables -I FORWARD 1 -i "$WIFI_INTERFACE" \
         -j "$FORWARD_CHAIN"
+    CREATED_HOOKS+=("ip6tables|FORWARD|$WIFI_INTERFACE|$FORWARD_CHAIN")
+fi
+
+# Installation succeeded.
+trap - ERR
 CONFIG
 
 cat > "$OUTPUT_DIR/nomad-wifi-isolation-remove.sh" <<'CONFIG'
@@ -206,10 +257,68 @@ cat > "$OUTPUT_DIR/nomad-wifi-isolation-remove.sh" <<'CONFIG'
 set -Eeuo pipefail
 
 # DEVELOPMENT PREVIEW ONLY.
-# Remove only the Project NOMAD firewall hooks and chains.
+# Refuse cleanup if NOMAD chains contain unexpected rules.
 
 INPUT_CHAIN="NOMAD-WIFI-INPUT"
 FORWARD_CHAIN="NOMAD-WIFI-FORWARD"
+
+# Validate all existing NOMAD chains before removing anything.
+# This prevents an unknown chain from being silently flushed.
+verify_chain() {
+    local firewall="$1"
+    local chain="$2"
+
+    if ! "$firewall" -L "$chain" -n >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local rules
+    rules="$("$firewall" -S "$chain")"
+
+    # Build the exact rule listing expected for this chain.
+    local expected=""
+
+    if [[ "$firewall" == "iptables" && "$chain" == "$INPUT_CHAIN" ]]; then
+        expected="-N $chain"
+        expected+=$'\n'"-A $chain -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT"
+        expected+=$'\n'"-A $chain -p udp --dport 67 -j ACCEPT"
+        expected+=$'\n'"-A $chain -p udp --dport 53 -j ACCEPT"
+        expected+=$'\n'"-A $chain -p tcp --dport 53 -j ACCEPT"
+        expected+=$'\n'"-A $chain -p tcp -d 192.168.50.1 --dport 80 -j ACCEPT"
+        expected+=$'\n'"-A $chain -j DROP"
+
+    elif [[ "$firewall" == "iptables" && "$chain" == "$FORWARD_CHAIN" ]]; then
+        expected="-N $chain"
+
+        local port bridge
+        for port in 8080 8090 8100 8200 8300 8400; do
+            for bridge in docker0 br+; do
+                expected+=$'\n'"-A $chain -p tcp -m conntrack --ctstate DNAT --ctorigdst 192.168.50.1 --ctorigdstport $port -o $bridge -j RETURN"
+            done
+        done
+
+        expected+=$'\n'"-A $chain -j DROP"
+
+    elif [[ "$firewall" == "ip6tables" ]]; then
+        expected="-N $chain"
+        expected+=$'\n'"-A $chain -j DROP"
+    else
+        echo "ERROR: Unexpected firewall chain." >&2
+        return 1
+    fi
+
+    if [[ "$rules" != "$expected" ]]; then
+        echo "ERROR: Firewall chain differs from expected NOMAD rules: $firewall $chain" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+for firewall in iptables ip6tables; do
+    verify_chain "$firewall" "$INPUT_CHAIN"
+    verify_chain "$firewall" "$FORWARD_CHAIN"
+done
 
 remove_hook() {
     local firewall="$1"
