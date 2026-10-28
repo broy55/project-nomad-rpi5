@@ -36,6 +36,62 @@ The original project vision and built-in modules remain intact. This fork is pri
 - Pi 5 + compatible NVIDIA eGPU setups for local Ollama inference
 - RTL-SDR based radio and spectrum analysis attachments
 
+## Raspberry Pi 5 Edition
+
+This repository is a Raspberry Pi 5 / ARM64 adaptation of Project N.O.M.A.D.,
+based on the work of the original Project NOMAD developers and the
+`eglische/project-nomad-rpi` fork.
+
+### Development and Testing
+
+The current development system is:
+
+- Raspberry Pi 5 with 16 GB RAM
+- 1 TB NVMe storage
+- Ubuntu Server 26.04 ARM64
+- Docker-based Project NOMAD services
+- Local Ollama AI inference
+- Offline browser-accessible applications
+
+### Raspberry Pi 5 Improvements
+
+This fork includes:
+
+- Ubuntu ARM64 installer compatibility improvements
+- Raspberry Pi-specific Docker configuration
+- Improved installer credential generation
+- Raspberry Pi-compatible application updates
+- Offline Wi-Fi hotspot development
+- Captive portal configuration previews
+- IPv4 and IPv6 firewall isolation simulation tests
+- Automatic rollback for tested firewall command failures
+
+### Experimental Features
+
+The Wi-Fi hotspot installer and firewall isolation scripts are currently
+development previews.
+
+They have passed simulated firewall tests, but persistent ownership tracking,
+interruption recovery, and isolated real-network validation remain outstanding.
+
+**Do not execute the experimental firewall scripts on a working NOMAD server.**
+
+NVIDIA eGPU support and advanced recovery features are also experimental
+and should not be assumed functional on every Pi 5 configuration.
+
+### Installation Status
+
+The Raspberry Pi 5 installation process is under development.
+
+Although the software stack is running on the development Pi 5, the
+modified installer has not yet completed a fresh-install validation
+on an independent system.
+
+Until that validation is complete, this repository does not provide a
+recommended one-command production installation procedure.
+
+---
+
 ## Installation & Quickstart
 Project N.O.M.A.D. can be installed on any Debian-based operating system (we recommend Ubuntu). Installation is completely terminal-based, and all tools and resources are designed to be accessed through the browser, so there's no need for a desktop environment if you'd rather setup N.O.M.A.D. as a "server" and access it through other clients.
 
@@ -43,10 +99,11 @@ Project N.O.M.A.D. can be installed on any Debian-based operating system (we rec
 
 #### Quick Install
 ```bash
-sudo apt-get update && sudo apt-get install -y curl && curl -fsSL https://raw.githubusercontent.com/eglische/project-nomad-rpi/refs/heads/main/install/install_nomad.sh -o install_nomad.sh && sudo bash install_nomad.sh
+# Development release: automated installation is not yet validated.
+# Review install/install_nomad.sh before running it on a test device.
 ```
 
-Project N.O.M.A.D. is now installed on your device! Open a browser and navigate to `http://localhost:8080` (or `http://DEVICE_IP:8080`) to start exploring!
+After completing a validated installation, open a browser and navigate to `http://localhost:8080` (or `http://DEVICE_IP:8080`) to start exploring!
 
 ## How It Works
 N.O.M.A.D. is a management UI ("Command Center") and API that orchestrates a collection of containerized tools and resources via [Docker](https://www.docker.com/). It handles installation, configuration, and updates for everything — so you don't have to.
