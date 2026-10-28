@@ -815,16 +815,21 @@ check_is_debug_mode(){
 }
 
 generateRandomPass() {
-  local length="${1:-32}"  # Default to 32
-  local password
+  local length="${1:-32}"
 
-  # Temporarily disable pipefail so head terminating the upstream tr process
-  # doesn't turn password generation into a false error.
-  set +o pipefail
-  password="$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "$length")"
-  set -o pipefail
+  python3 - "$length" <<'PYTHON_SECRET'
+import secrets
+import string
+import sys
 
-  echo "$password"
+length = int(sys.argv[1])
+
+if not 16 <= length <= 256:
+    raise SystemExit("Password length must be between 16 and 256.")
+
+alphabet = string.ascii_letters + string.digits
+print("".join(secrets.choice(alphabet) for _ in range(length)))
+PYTHON_SECRET
 }
 
 ensure_docker_installed() {
@@ -1324,11 +1329,15 @@ load_or_generate_install_secrets() {
   db_root_password="$(generateRandomPass)"
   db_user_password="$(generateRandomPass)"
 
-  cat > "${install_secrets_file}" <<EOF
+  # Restrict file permissions before creating secrets.
+  (
+    umask 077
+    cat > "${install_secrets_file}" <<EOF
 app_key='${app_key}'
 db_root_password='${db_root_password}'
 db_user_password='${db_user_password}'
 EOF
+  )
   chmod 600 "${install_secrets_file}"
   echo -e "${GREEN}#${RESET} Persisted install secrets to ${WHITE_R}${install_secrets_file}${RESET} for future recovery installs."
 }
@@ -2251,6 +2260,7 @@ download_management_compose_file() {
     compose_url=''
   fi
   copy_or_download_file "${compose_source_path}" "${compose_url}" "${compose_file_path}" "the docker compose file"
+  chmod 600 "$compose_file_path"
   echo -e "${GREEN}#${RESET} Docker compose file downloaded successfully to $compose_file_path.\\n"
 
   # Inject dynamic env values into the compose file
@@ -2261,6 +2271,10 @@ download_management_compose_file() {
   sed -i "s|DB_PASSWORD=replaceme|DB_PASSWORD=${db_user_password}|g" "$compose_file_path"
   sed -i "s|MYSQL_ROOT_PASSWORD=replaceme|MYSQL_ROOT_PASSWORD=${db_root_password}|g" "$compose_file_path"
   sed -i "s|MYSQL_PASSWORD=replaceme|MYSQL_PASSWORD=${db_user_password}|g" "$compose_file_path"
+
+  # Compose contains generated application and database credentials.
+  # Restrict access immediately after credential substitution.
+  chmod 600 "$compose_file_path"
   sed -i "s|/opt/project-nomad/storage|${nomad_data_root}/storage|g" "$compose_file_path"
   sed -i "s|/opt/project-nomad/mysql|${nomad_data_root}/mysql|g" "$compose_file_path"
   sed -i "s|/opt/project-nomad/redis|${nomad_data_root}/redis|g" "$compose_file_path"
